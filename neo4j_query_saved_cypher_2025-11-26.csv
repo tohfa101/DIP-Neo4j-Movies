@@ -1,0 +1,103 @@
+name,description,query,id,parentId,isFolder
+Verify Import,,"MATCH (n)
+WITH COUNT(n) AS numVertices
+MATCH ()-[e]->()
+RETURN numVertices, COUNT(e) AS numEdges",0,,false
+"matches all nodes ",,MATCH (n) RETURN n,1,,false
+Schema-level visualization of db,," CALL db.schema.visualization()",2,,false
+Check if movie exists,,"MATCH (m:Movie {title: ""The Bridges of Madison County""})
+RETURN m",3,,false
+Check if actor/director exists,,"MATCH (p:Person {name: ""Clint Eastwood""})
+RETURN p",4,,false
+Create Movie and Person that do not exist,,"CREATE (:Movie {title: ""The Bridges of Madison County"", released: 1995})
+CREATE (:Person {name: ""Meryl Streep"", born: 1949})
+CREATE (:Person {name: ""Annie Corlay"", born: 1960})",5,,false
+Create ActedIn and Directed Relationships,,"MATCH (m:Movie {title: ""The Bridges of Madison County""})
+MATCH (a1:Person {name: ""Clint Eastwood""})
+MATCH (a2:Person {name: ""Meryl Streep""})
+MATCH (a3:Person {name: ""Annie Corlay""})
+MERGE (a1)-[:ACTED_IN]->(m)
+MERGE (a2)-[:ACTED_IN]->(m)
+MERGE (a3)-[:ACTED_IN]->(m)
+MERGE (a1)-[:DIRECTED]->(m)",6,,false
+Verify nodes add and relations,,"MATCH (p:Person)-[r]->(m:Movie {title: ""The Bridges of Madison County""})
+RETURN p.name AS Person, type(r) AS Relationship, m.title AS Movie",7,,false
+Find all actors that directed a movie they also acted in and return actor and movie nodes.,,"MATCH (p:Person)-[:ACTED_IN]->(m:Movie)<-[:DIRECTED]-(p)
+RETURN p, m",8,,false
+Find the name of the actor who played DeDe in the movie “Joe Versus the Volcano”,,"MATCH (actor:Person)-[r:ACTED_IN]->(movie:Movie {title: ""Joe Versus the Volcano""})
+WHERE ""DeDe"" IN r.roles
+RETURN actor.name, movie.title, r.roles",9,,false
+Find the director’s names of movies where Madonna and Tom Hanks were co-actors.,,"MATCH (madonna:Person {name: ""Madonna""})-[:ACTED_IN]->(m:Movie)<-[:ACTED_IN]-(tom:Person {name: ""Tom Hanks""})
+MATCH (director:Person)-[:DIRECTED]->(m)
+RETURN DISTINCT director.name AS Director, m.title AS Movie",10,,false
+"Find all actors that acted in a movie together after 2009 (release date, 2009 included) and return the list of actor names along with the movie node.",,"MATCH (actor:Person)-[:ACTED_IN]->(m:Movie)
+WHERE m.released >= 2009
+RETURN m.title AS Movie, COLLECT(actor.name) AS Actors, m.released",11,,false
+"By extending the previous query, find all movies where the cast of the movies found before also acted in. For instance, if C(m) = {a1, a2} is the list of actors (the cast) of a movie m in the previous answer, then, one seeks for movies m′ such that the cast C(m′) contains C(m).",,"//Get movies released after 2009 and their casts
+MATCH (a:Person)-[:ACTED_IN]->(m:Movie)
+WHERE m.released >= 2009
+WITH m, COLLECT(a) AS cast
+
+//Find other movies that contain all actors from that cast
+MATCH (a2:Person)-[:ACTED_IN]->(m2:Movie)
+WITH m, cast, m2, COLLECT(a2) AS cast2
+WHERE ALL(actor IN cast WHERE actor IN cast2)
+
+//Return results
+RETURN m.title AS OriginalMovie, m2.title AS OtherMovie, [actor IN cast | actor.name] AS Cast",12,,false
+Match pairs of reviewers and those they follow directly or via a third reviewer,,"MATCH (r1:Person)-[:FOLLOWS*1..3]->(r2:Person)
+RETURN DISTINCT r1.name AS Reviewer, r2.name AS FollowedReviewer",13,,false
+"Count the number of more-than-70-years-old actors reachable in at most 4 hops starting from Clint Eastwood and following the ACTED_IN relationship through movies. For instance, a valid pattern is clint →m1 ←p1 →m2 ←p2 with mi the movies and pi the elders. p1 is 1-hop from clint, whereas p2 is 2-hops. Each pi of the chain is born before 1954. This is “the elder network”",,"MATCH (clint:Person {name: ""Clint Eastwood""})-[:ACTED_IN*..4]-(elder:Person)
+WHERE elder.born < 1954 AND elder <> clint
+RETURN COUNT(DISTINCT elder) AS NumElders",14,,false
+"List the number of more-than-70-years-old actors reachable in at most 4 hops starting from Clint Eastwood and following the ACTED_IN relationship through movies. For instance, a valid pattern is clint →m1 ←p1 →m2 ←p2 with mi the movies and pi the elders. p1 is 1-hop from clint, whereas p2 is 2-hops. Each pi of the chain is born before 1954. This is “the elder network”",,"MATCH (clint:Person {name: ""Clint Eastwood""})-[:ACTED_IN*..4]-(elder:Person)
+WHERE elder.born < 1954 AND elder <> clint
+RETURN DISTINCT elder.name AS ElderActor, elder.born AS BirthYear",15,,false
+Find actors with top 10 – sort of – Katz centrality along ACTED_IN edges (through movies). Return actor vertex and Katz centrality,,"MATCH (a:Person)
+WITH a, 
+  SIZE([(a)-[:ACTED_IN]->(:Movie)<-[:ACTED_IN]-(p:Person) | p]) AS w1,
+  SIZE([(a)-[:ACTED_IN]->(:Movie)<-[:ACTED_IN]-(:Person)-[:ACTED_IN]->(:Movie)<-[:ACTED_IN]-(p2:Person) | p2]) AS w2,
+  SIZE([(a)-[:ACTED_IN*3]->(p3:Person) | p3]) AS w3,
+  SIZE([(a)-[:ACTED_IN*4]->(p4:Person) | p4]) AS w4
+WITH a, (w1*1.0) + (w2*0.5) + (w3*0.333) + (w4*0.25) AS KatzCentrality
+RETURN a.name AS Actor, KatzCentrality
+ORDER BY KatzCentrality DESC
+LIMIT 10",16,,false
+"Return the whole graph as a simple adjacency list of vertex ids (id(.) scalar function) ordered by decreasing vertex degree. ",,"MATCH (n)
+OPTIONAL MATCH (n)--(neighbor)
+WITH id(n) AS nodeId, COLLECT(DISTINCT id(neighbor)) AS adjacency, SIZE(COLLECT(DISTINCT neighbor)) AS degree
+ORDER BY degree DESC
+RETURN nodeId, adjacency, degree",17,,false
+Export Nodes,,,18,,true
+Persons,,"MATCH (p:Person)
+RETURN id(p) AS person_id, p.name AS name, p.born AS born",19,18,false
+Movies,,"MATCH (m:Movie)
+RETURN id(m) AS movie_id, m.title AS title, m.released AS released",20,18,false
+Acted_In,,"MATCH (p:Person)-[r:ACTED_IN]->(m:Movie)
+RETURN 
+  id(r) AS rel_id,
+  id(p) AS person_id,
+  p.name AS actor_name,
+  p.born AS actor_born,
+  id(m) AS movie_id,
+  m.title AS movie_title,
+  m.released AS movie_released,
+  r.roles AS roles",21,18,false
+Directed,,"MATCH (p:Person)-[r:DIRECTED]->(m:Movie)
+RETURN 
+  id(r) AS rel_id,
+  id(p) AS person_id,
+  p.name AS director_name,
+  p.born AS director_born,
+  id(m) AS movie_id,
+  m.title AS movie_title,
+  m.released AS movie_released",22,18,false
+Follows,,"MATCH (p1:Person)-[r:FOLLOWS]->(p2:Person)
+RETURN 
+  id(r) AS rel_id,
+  id(p1) AS follower_id,
+  p1.name AS follower_name,
+  p1.born AS follower_born,
+  id(p2) AS followed_id,
+  p2.name AS followed_name,
+  p2.born AS followed_born",23,18,false
